@@ -83,6 +83,7 @@ double aPID(double Kp, double Ki, double Kd, double setpoint, double input) {
   unsigned long rr = 100; //refresh rate, time it takes between PID running
   unsigned long oldTime = 0; //time the last pid ran
   unsigned long now = millis();  //get current time
+  double output; //output value of PID to motor
 
   if (now - oldTime >= rr) { //if enough time has passed since the last pid call
     oldTime = now; //update oldTime
@@ -90,6 +91,7 @@ double aPID(double Kp, double Ki, double Kd, double setpoint, double input) {
     integral = integral + (error * (rr / 1000.0)); //calculate integral
     derivative = (error - old_err) / (rr / 1000.0); //calc deriv
     output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
-    old_err = err; //updates old error to current error
+    old_err = error; //updates old error to current error
   }
+  return output;
 }
