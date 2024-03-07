@@ -65,6 +65,53 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
 
+  measureDistance();
+  //find gyro angle
+
+  if (distance > 10 { //if high distance, move forward
+  setCarState(FORWARD);
+  }
+  else if (distance <= 10 and distance > 5) { //if correct distance range, pixy read
+  setCarState(PIXY_READ);
+  }
+  else { //otherwise, too close, back up
+    setCarState(BACKWARD);
+  }
+
+  switch (currentState) {
+
+
+  case FORWARD:
+    //move motors forward, IMU centering
+
+    break;
+
+  case  BACKWARD:
+    //move motors backward, maybe IMU centering
+
+    break;
+
+  case TURN_LEFT:
+    //move motors until turned 90 degrees left
+
+    break;
+
+  case TURN_RIGHT:
+    //move motors until turned 90 degrees right
+
+    break;
+
+  case TURN_AROUND:
+    //move motors until turned 180 degrees
+
+    break;
+
+  case PIXY_READ:
+    //read color
+
+    break;
+
+}
 }
 
 
@@ -94,4 +141,28 @@ double aPID(double Kp, double Ki, double Kd, double setpoint, double input) {
     old_err = error; //updates old error to current error
   }
   return output;
+}
+
+
+void measureDistance() {
+
+  //set pin as output so we can send a pulse
+  pinMode(signal, OUTPUT);
+  //set output to LOW
+  digitalWrite(signal, LOW);
+  delayMicroseconds(5);
+
+  //now send the 5uS pulse out to activate the PING
+  digitalWrite(signal, HIGH);
+  delayMicroseconds(5);
+  digitalWrite(signal, LOW);
+
+
+  //now we need to change the digital pin
+  //to input to read the incoming pulse
+  pinMode(signal, INPUT);
+
+  //finally, measure the length of the incoming pulse
+  pulseDuration = pulseIn(signal, HIGH);
+  distance = (pulseDuration * 0.0001 * 343) / 2; //conversion for the distance
 }
