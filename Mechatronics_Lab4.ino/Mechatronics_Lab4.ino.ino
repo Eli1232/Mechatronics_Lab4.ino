@@ -14,6 +14,7 @@ Adafruit_BNO055 bno = Adafruit_BNO055(-1, 0x28, &Wire);
 Pixy2 pixy;
 
 // IMU last angle
+double firstAngle = 0;
 double lastAngle = 0; //previous angle (updated in setup and after turns
 imu::Vector<3> euler;
 double threshold_stra = 0.05; //degree threshold for straight PID
@@ -79,6 +80,7 @@ void setup() {
     while (1);
   }
   imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+  firstAngle = euler.x(); //x angle of the robot in setup
   lastAngle = euler.x(); //x angle of the robot in setup
 }
 
@@ -110,42 +112,39 @@ void loop() {
       }
       break;
 
-    case  BACKWARD: //Move backwards slowly, no PID, until distance is high enough, then it goes to PIXY_READ 
+    case  BACKWARD: //Move backwards slowly, no PID, until distance is high enough, then it goes to PIXY_READ
       motors.setM1Speed(- 1 * (usualSpeed / 2));
       motors.setM2Speed(usualSpeed / 2);
       break;
 
     case TURN_LEFT:
       //move motors until turned 90 degrees left
-      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-      setpoint = euler.x() - 90; //setpoint is 90 degrees left of the current angle
+      setpoint = lastAngle - 90; //setpoint is 90 degrees left of the previous angle (based on the first global angle)
       if (setpoint < 0) { //if the setpoint is negative, rollover by 360
         setpoint = 360 + setpoint;
       }
+      lastAngle = setpoint; //set lastangle to the one set in setpoint
       aPID_TURNING(Kpt, Kit, Kdt, setpoint); //run turning PID
-      lastAngle = setpoint; //after turning is completed, set the current angle (setpoint) as the new "0" angle for the centering PID to follow
       break;
 
     case TURN_RIGHT:
       //move motors until turned 90 degrees right
-      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-      setpoint = euler.x() + 90;
+      setpoint = lastAngle + 90;
       if (setpoint > 360) {
         setpoint = setpoint - 360;
       }
-      aPID_TURNING(Kpt, Kit, Kdt, setpoint);
       lastAngle = setpoint;
+      aPID_TURNING(Kpt, Kit, Kdt, setpoint);
       break;
 
     case TURN_AROUND:
       //move motors until turned 180 degrees
-      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-      setpoint = euler.x() + 180;
+      setpoint = lastAngle + 180;
       if (setpoint > 360) {
         setpoint = setpoint - 360;
       }
-      aPID_TURNING(Kpt, Kit, Kdt, setpoint);
       lastAngle = setpoint;
+      aPID_TURNING(Kpt, Kit, Kdt, setpoint);
       break;
 
     case PIXY_READ:
