@@ -110,7 +110,7 @@ void loop() {
       }
       break;
 
-    case  BACKWARD:
+    case  BACKWARD: //TODO: not implemented, implement if necessary
       // //move motors backward, maybe IMU centering
       // motors.setM1Speed(- 1 * usualSpeed);
       // motors.setM2Speed(usualSpeed);
@@ -123,12 +123,12 @@ void loop() {
     case TURN_LEFT:
       //move motors until turned 90 degrees left
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-      setpoint = euler.x() - 90;
-      if (setpoint < 0) {
+      setpoint = euler.x() - 90; //setpoint is 90 degrees left of the current angle
+      if (setpoint < 0) { //if the setpoint is negative, rollover by 360
         setpoint = 360 + setpoint;
       }
-      aPID_TURNING(Kpt, Kit, Kdt, setpoint);
-      lastAngle = setpoint;
+      aPID_TURNING(Kpt, Kit, Kdt, setpoint); //run turning PID
+      lastAngle = setpoint; //after turning is completed, set the current angle (setpoint) as the new "0" angle for the centering PID to follow
       break;
 
     case TURN_RIGHT:
@@ -154,7 +154,7 @@ void loop() {
       break;
 
     case PIXY_READ:
-      //read color
+      //read color and set the state based on what is read
       pixy.ccc.getBlocks();
       if (pixy.ccc.numBlocks) {
         if (pixy.ccc.blocks[0].m_signature == 1) {
@@ -193,29 +193,28 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
   while (1) {
     now = millis();
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
-      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER); //get the new angle
       input = euler.x();
-      if (abs(input - setpoint) < threshold_turn) {
-        // if euler.x() is pretty close to the setpoint, and it is within the threshold for the settling time
-        settleCount = millis();
-        if (settleCount - oldSettleCount >= settleTime) { //if the error has been within the settle threshold for enough time, exit
+      oldTime = now; //update oldTime
+      double error = setpoint - input; //find error
+      if (abs(error) < threshold_turn) { // if euler.x() is pretty close to the setpoint, and it is within the threshold for the settling time
+        settleCount = millis(); //update the current settle time counter
+        if (settleCount - oldSettleCount >= settleTime) { //if the error has been within the settle threshold for enough time, exit the turning PID
           // stop and exit the function
           motors.setM1Speed(speed);
           motors.setM2Speed(speed);
           return;
         }
       }
-      else {
-        oldSettleCount = millis(); //resets the starting counter for settleCount if we ever fall outside the threshold
+      else { //if we ever fall outside the threshold
+        oldSettleCount = millis(); //resets the starting counter for settleCount
       }
-      oldTime = now; //update oldTime
-      double error = setpoint - input; //find error
       integral = integral + (error * (rr / 1000.0)); //calculate integral
       derivative = (error - old_err) / (rr / 1000.0); //calc deriv
       output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
       old_err = error; //updates old error to current error
       speed = constrain(output, -400, 400);
-      motors.setM1Speed(speed);
+      motors.setM1Speed(speed); //wheels fed same speed, turn in opposite directions
       motors.setM2Speed(speed);
     }
   }
@@ -235,7 +234,7 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
   double input;
   while (1) {
     measureDistance();
-    if (distance < 8) {
+    if (distance < 8) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
       motors.setM1Speed(0);
       motors.setM2Speed(0);
       return;
@@ -244,13 +243,6 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
       input = euler.x();
-      //      if (abs(input - setpoint) < threshold_stra && abs(input - setpoint) > -1 * threshold_stra) {
-      //        // if euler.x() is pretty close to the setpoint
-      //        // stop and exit the function
-      //        motors.setM1Speed(speed);
-      //        motors.setM2Speed(speed);
-      //        return;
-      //      }
       oldTime = now; //update oldTime
       double error = setpoint - input; //find error
       integral = integral + (error * (rr / 1000.0)); //calculate integral
@@ -260,11 +252,12 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
       speedAdjust = constrain(output, -100, 100);
       // TODO: NEED TO CALIBRATE
       // HERE, WANT currSpeed to be positve
-      motors.setM1Speed(abs(currSpeed + speedAdjust));
-      motors.setM2Speed(-1 * abs(currSpeed - speedAdjust));
+      motors.setM1Speed(abs(currSpeed + speedAdjust)); //set motor speed to the normal speed plus some PID adjustment
+      motors.setM2Speed(-1 * abs(currSpeed - speedAdjust)); //set the other motor to have the opposite change of the first one, magnifying the effect
     }
   }
 }
+
 
 
 void measureDistance() {
