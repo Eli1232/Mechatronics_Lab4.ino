@@ -4,9 +4,18 @@
 #include <SPI.h>
 #include <Pixy2.h>
 #include <DualMAX14870MotorShield.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BNO055.h>
+#include <utility/imumaths.h>
 
 DualMAX14870MotorShield motors;
+Adafruit_BNO055 bno = Adafruit_BNO055(-1, 0x28, &Wire);
 Pixy2 pixy;
+
+// IMU last angle
+double lastAngle = 0;
+imu::Vector<3> euler;
 
 //PID constants for centering
 double Kpc = 1; //proportional
@@ -38,6 +47,8 @@ const int SIGNATURE_TURN_AROUND = 3;
 const int SIGNATURE_RIGHT_Light = 4;
 const int SIGNATURE_RIGHT_Light2 = 5;
 
+double threshold_stra = 0.05;
+double threshold_turn = 0.05;
 //states
 enum Action {
   FORWARD,
@@ -59,7 +70,15 @@ void setup() {
   Serial.begin(115200); //for the pixy
   Serial.print("Starting...\n"); //for the pixy
   pixy.init(); //for the pixy
-
+  motors.enableDrivers(); //for the motors
+  if(!bno.begin())
+  {
+    /* There was a problem detecting the BNO055 ... check your connections */
+    Serial.print("Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
+    while(1);
+  }
+  imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+  lastAngle = euler.x();
 }
 
 void loop() {
@@ -79,39 +98,60 @@ void loop() {
   }
 
   switch (currentState) {
+    case FORWARD:
+      //move motors forward, IMU centering
 
+      break;
 
-  case FORWARD:
-    //move motors forward, IMU centering
+    case  BACKWARD:
+      //move motors backward, maybe IMU centering
 
-    break;
+      break;
 
-  case  BACKWARD:
-    //move motors backward, maybe IMU centering
+    case TURN_LEFT:
+      //move motors until turned 90 degrees left
+      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+      double setpoint = euler.x() - 90;
+      if(setpoint < 0){
+        setpoint = 360 + setpoint;
+      }
+      aPID_TURNING(Kpt, Kit, Kdt, setpoint);
+      break;
 
-    break;
+    case TURN_RIGHT:
+      //move motors until turned 90 degrees right
+      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+      double setpoint = euler.x() + 90;
+      if(setpoint > 360){
+        setpoint = setpoint - 360;
+      }
+      aPID_TURNING(Kpt, Kit, Kdt, setpoint);
+      break;
 
-  case TURN_LEFT:
-    //move motors until turned 90 degrees left
+    case TURN_AROUND:
+      //move motors until turned 180 degrees
+      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+      double setpoint = euler.x() + 180;
+      if(setpoint > 360){
+        setpoint = setpoint - 360;
+      }
+      aPID_TURNING(Kpt, Kit, Kdt, setpoint);
+      break;
 
-    break;
-
-  case TURN_RIGHT:
-    //move motors until turned 90 degrees right
-
-    break;
-
-  case TURN_AROUND:
-    //move motors until turned 180 degrees
-
-    break;
-
-  case PIXY_READ:
-    //read color
-
-    break;
-
-}
+    case PIXY_READ:
+      //read color
+      pixy.ccc.getBlocks();
+      if(pixy.ccc.numBlocks){
+        if(pixy.ccc.blocks[0].m_signature == 1){
+          setCarState(TURN_LEFT);
+        } else if(pixy.ccc.blocks[0].m_signature == 2 || pixy.ccc.blocks[0].m_signature == 4){
+          setCarState(TURN_RIGHT);
+        } else if(pixy.ccc.blocks[0].m_signature == 3){
+          setCarState(TURN_AROUND);
+        }
+      }
+      break;
+  }
 }
 
 
@@ -122,8 +162,7 @@ void loop() {
 //Centering- Process variable: angle (IMU). Control variable: motor speed. Purpose: prevents robot from drifting when moving forward.
 //Distance- Process variable: distance (ultrasonic). Control variable: motor speed. Purpose: prevents robot from drifting when moving forward
 //Turning- Process variable: angle (IMU). Control variable: motor speed. Purpose: Get the robot to turn 90 or 180 degrees
-double aPID(double Kp, double Ki, double Kd, double setpoint, double input) {
-
+void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
   double integral = 0; //cumulative der
   double derivative; //change in error over change in time
   double old_err = 0; //error from previous time step
@@ -131,16 +170,65 @@ double aPID(double Kp, double Ki, double Kd, double setpoint, double input) {
   unsigned long oldTime = 0; //time the last pid ran
   unsigned long now = millis();  //get current time
   double output; //output value of PID to motor
-
-  if (now - oldTime >= rr) { //if enough time has passed since the last pid call
-    oldTime = now; //update oldTime
-    double error = setpoint - input; //find error
-    integral = integral + (error * (rr / 1000.0)); //calculate integral
-    derivative = (error - old_err) / (rr / 1000.0); //calc deriv
-    output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
-    old_err = error; //updates old error to current error
+  double speed; //speed output of the motors
+  while(1){
+    if (now - oldTime >= rr) { //if enough time has passed since the last pid call
+      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+      input = euler.x();
+      if(abs(input - setpoint) < threshold_turn && abs(input - setpoint) > - 1 * threshold_turn){
+        // if euler.x() is pretty close to the setpoint
+        // stop and exit the function
+        motors.setM1Speed(speed);
+        motors.setM2Speed(speed);
+        return;
+      }
+      oldTime = now; //update oldTime
+      double error = setpoint - input; //find error
+      integral = integral + (error * (rr / 1000.0)); //calculate integral
+      derivative = (error - old_err) / (rr / 1000.0); //calc deriv
+      output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
+      old_err = error; //updates old error to current error
+      speed = constrain(output, -400, 400);
+      motors.setM1Speed(speed);
+      motors.setM2Speed(speed);
+    }
   }
-  return output;
+}
+
+// TODO: ISSUE: STUCK IN THE LOOP WITHOUT MEASURING FRONT DISTANCE
+void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double currSpeed) {
+  double integral = 0; //cumulative der
+  double derivative; //change in error over change in time
+  double old_err = 0; //error from previous time step
+  unsigned long rr = 100; //refresh rate, time it takes between PID running
+  unsigned long oldTime = 0; //time the last pid ran
+  unsigned long now = millis();  //get current time
+  double output; //output value of PID to motor
+  double speed; //speed output of the motors
+  while(1){
+    if (now - oldTime >= rr) { //if enough time has passed since the last pid call
+      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+      input = euler.x();
+      if(abs(input - setpoint) < threshold_stra && abs(input - setpoint) > -1 * threshold_stra){
+        // if euler.x() is pretty close to the setpoint
+        // stop and exit the function
+        motors.setM1Speed(speed);
+        motors.setM2Speed(speed);
+        return;
+      }
+      oldTime = now; //update oldTime
+      double error = setpoint - input; //find error
+      integral = integral + (error * (rr / 1000.0)); //calculate integral
+      derivative = (error - old_err) / (rr / 1000.0); //calc deriv
+      output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
+      old_err = error; //updates old error to current error
+      speedAdjust = constrain(output, -100, 100);
+      // TODO: NEED TO CALIBRATE
+      // HERE, WANT currSpeed to be positve
+      motors.setM1Speed(abs(currSpeed + speedAdjust));
+      motors.setM2Speed(-1 * abs(currSpeed - speedAdjust));
+    }
+  }
 }
 
 
