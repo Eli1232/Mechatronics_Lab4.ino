@@ -14,7 +14,7 @@ Adafruit_BNO055 bno = Adafruit_BNO055(-1, 0x28, &Wire);
 Pixy2 pixy;
 
 // IMU last angle
-double lastAngle = 0; //previous angle
+double lastAngle = 0; //previous angle (updated in setup and after turns
 imu::Vector<3> euler;
 double threshold_stra = 0.05; //degree threshold for straight PID
 double threshold_turn = 0.05; //degree threshold for turning PID
@@ -37,7 +37,7 @@ double Kdt = 0; //derivative
 
 
 //ping sensor initialization
-int signal = 49; //digital pin
+int signal = 27; //digital pin
 float distance;
 int distThresh = 10;
 unsigned long pulseDuration; //USS
@@ -110,14 +110,9 @@ void loop() {
       }
       break;
 
-    case  BACKWARD: //TODO: not implemented, implement if necessary
-      // //move motors backward, maybe IMU centering
-      // motors.setM1Speed(- 1 * usualSpeed);
-      // motors.setM2Speed(usualSpeed);
-      // imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-      // if (abs(euler.x()-lastAngle) > threshold_stra){
-      //   aPID_STRAIGHT(Kpc, Kic, Kdc, lastAngle, usualSpeed);
-      // }
+    case  BACKWARD: //Move backwards slowly, no PID, until distance is high enough, then it goes to PIXY_READ 
+      motors.setM1Speed(- 1 * (usualSpeed / 2));
+      motors.setM2Speed(usualSpeed / 2);
       break;
 
     case TURN_LEFT:
