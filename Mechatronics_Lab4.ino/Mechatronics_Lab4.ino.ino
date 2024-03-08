@@ -16,6 +16,8 @@ Pixy2 pixy;
 // IMU last angle
 double lastAngle = 0;
 imu::Vector<3> euler;
+double threshold_stra = 0.05;
+double threshold_turn = 0.05;
 
 //PID constants for centering
 double Kpc = 1; //proportional
@@ -47,8 +49,7 @@ const int SIGNATURE_TURN_AROUND = 3;
 const int SIGNATURE_RIGHT_Light = 4;
 const int SIGNATURE_RIGHT_Light2 = 5;
 
-double threshold_stra = 0.05;
-double threshold_turn = 0.05;
+double usualSpeed = 200;
 //states
 enum Action {
   FORWARD,
@@ -100,12 +101,22 @@ void loop() {
   switch (currentState) {
     case FORWARD:
       //move motors forward, IMU centering
-
+      motors.setM1Speed(usualSpeed);
+      motors.setM2Speed(-1 * usualSpeed);
+      imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+      if (abs(euler.x()-lastAngle) > threshold_stra){
+        aPID_STRAIGHT(Kpc, Kic, Kdc, lastAngle, usualSpeed);
+      }
       break;
 
     case  BACKWARD:
-      //move motors backward, maybe IMU centering
-
+      // //move motors backward, maybe IMU centering
+      // motors.setM1Speed(- 1 * usualSpeed);
+      // motors.setM2Speed(usualSpeed);
+      // imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+      // if (abs(euler.x()-lastAngle) > threshold_stra){
+      //   aPID_STRAIGHT(Kpc, Kic, Kdc, lastAngle, usualSpeed);
+      // }
       break;
 
     case TURN_LEFT:
@@ -116,6 +127,7 @@ void loop() {
         setpoint = 360 + setpoint;
       }
       aPID_TURNING(Kpt, Kit, Kdt, setpoint);
+      lastAngle = setpoint;
       break;
 
     case TURN_RIGHT:
@@ -126,6 +138,7 @@ void loop() {
         setpoint = setpoint - 360;
       }
       aPID_TURNING(Kpt, Kit, Kdt, setpoint);
+      lastAngle = setpoint;
       break;
 
     case TURN_AROUND:
@@ -136,6 +149,7 @@ void loop() {
         setpoint = setpoint - 360;
       }
       aPID_TURNING(Kpt, Kit, Kdt, setpoint);
+      lastAngle = setpoint;
       break;
 
     case PIXY_READ:
@@ -170,6 +184,7 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
   unsigned long oldTime = 0; //time the last pid ran
   unsigned long now = millis();  //get current time
   double output; //output value of PID to motor
+  double input;
   double speed; //speed output of the motors
   while(1){
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
@@ -206,6 +221,12 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
   double output; //output value of PID to motor
   double speed; //speed output of the motors
   while(1){
+    measureDistance();
+    if(distance < 8){
+      motors.setM1Speed(0);
+      motors.setM2Speed(0);
+      return;
+    }
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
       input = euler.x();
