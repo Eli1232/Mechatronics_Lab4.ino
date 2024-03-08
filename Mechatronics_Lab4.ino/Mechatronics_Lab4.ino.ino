@@ -180,6 +180,9 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
   double integral = 0; //cumulative der
   double derivative; //change in error over change in time
   double old_err = 0; //error from previous time step
+  double settleTime = 500;
+  unsigned long settleCount = 0; //counter for settling time
+  unsigned long oldSettleCount = 0; //counter for settling time
   unsigned long rr = 100; //refresh rate, time it takes between PID running
   unsigned long oldTime = 0; //time the last pid ran
   unsigned long now = millis();  //get current time
@@ -187,15 +190,22 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
   double input;
   double speed; //speed output of the motors
   while (1) {
+    now = millis();
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
       input = euler.x();
-      if (abs(input - setpoint) < threshold_turn && abs(input - setpoint) > - 1 * threshold_turn) {
-        // if euler.x() is pretty close to the setpoint
-        // stop and exit the function
-        motors.setM1Speed(speed);
-        motors.setM2Speed(speed);
-        return;
+      if (abs(input - setpoint) < threshold_turn) {
+        // if euler.x() is pretty close to the setpoint, and it is within the threshold for the settling time
+        settleCount = millis();
+        if (settleCount - oldSettleCount >= settleTime) { //if the error has been within the settle threshold for enough time, exit
+          // stop and exit the function
+          motors.setM1Speed(speed);
+          motors.setM2Speed(speed);
+          return;
+        }
+      }
+      else {
+        oldSettleCount = millis(); //resets the starting counter for settleCount if we ever fall outside the threshold
       }
       oldTime = now; //update oldTime
       double error = setpoint - input; //find error
@@ -227,6 +237,7 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
       motors.setM2Speed(0);
       return;
     }
+    now = millis();
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
       input = euler.x();
