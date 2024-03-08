@@ -83,25 +83,26 @@ void setup() {
 }
 
 void loop() {
+  double setpoint;
   // put your main code here, to run repeatedly:
 
   measureDistance();
   //find gyro angle
 
-  if (distance > 10 { //if high distance, move forward
-  setCarState(FORWARD);
+  if (distance > 10) { //if high distance, move forward
+    setCarState(FORWARD);
   }
   else if (distance <= 10 and distance > 5) { //if correct distance range, pixy read
-  setCarState(PIXY_READ);
+    setCarState(PIXY_READ);
   }
   else { //otherwise, too close, back up
     setCarState(BACKWARD);
   }
 
   switch (currentState) {
-  case FORWARD:
-    //move motors forward, IMU centering
-    motors.setM1Speed(usualSpeed); //set M1 to the usual speed
+    case FORWARD:
+      //move motors forward, IMU centering
+      motors.setM1Speed(usualSpeed); //set M1 to the usual speed
       motors.setM2Speed(-1 * usualSpeed); //make M2 the opposite of M1
       imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER); //get the x angle
       if (abs(euler.x() - lastAngle) > threshold_stra) { //if the current x angle is more than the threshold away from the startup angle, enter straightening PID
@@ -122,7 +123,7 @@ void loop() {
     case TURN_LEFT:
       //move motors until turned 90 degrees left
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-      double setpoint = euler.x() - 90;
+      setpoint = euler.x() - 90;
       if (setpoint < 0) {
         setpoint = 360 + setpoint;
       }
@@ -133,7 +134,7 @@ void loop() {
     case TURN_RIGHT:
       //move motors until turned 90 degrees right
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-      double setpoint = euler.x() + 90;
+      setpoint = euler.x() + 90;
       if (setpoint > 360) {
         setpoint = setpoint - 360;
       }
@@ -144,7 +145,7 @@ void loop() {
     case TURN_AROUND:
       //move motors until turned 180 degrees
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-      double setpoint = euler.x() + 180;
+      setpoint = euler.x() + 180;
       if (setpoint > 360) {
         setpoint = setpoint - 360;
       }
@@ -229,7 +230,9 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
   unsigned long oldTime = 0; //time the last pid ran
   unsigned long now = millis();  //get current time
   double output; //output value of PID to motor
+  double speedAdjust;
   double speed; //speed output of the motors
+  double input;
   while (1) {
     measureDistance();
     if (distance < 8) {
