@@ -2,7 +2,7 @@
 #include <SPI.h>
 const int INT_pin = 2;
 const int CS_pin = 53;
-const int RST_pin = 10;
+const int RST_pin = 3;
 // Since we are using workstation 4
 const int freqInMHz = 950;
 // Create an instance of the transceiver object
