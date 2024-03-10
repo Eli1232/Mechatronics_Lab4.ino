@@ -47,7 +47,10 @@ void loop() {
   p = analogRead(pPin);
   i = analogRead(iPin);
   d = analogRead(dPin);
-  String message = String(p) + " " + String(i) + " " + String(d);
+  p = map(p, 0, 1023, 0, 50);
+  i = map(i, 0, 1023, 0, 50);
+  d = map(d, 0, 1023, 0, 50);
+  String message = String(p/10.0) + " " + String(i/10.0) + " " + String(d/10.0);
   char text[32];
   message.toCharArray(text, sizeof(text));
   
