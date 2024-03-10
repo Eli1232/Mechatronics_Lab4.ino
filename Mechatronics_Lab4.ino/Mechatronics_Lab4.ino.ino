@@ -29,7 +29,7 @@ double threshold_stra = 0.05; //degree threshold for straight PID
 double threshold_turn = 0.05; //degree threshold for turning PID
 
 //PID constants for centering
-double Kpc = 1; //proportional
+double Kpc = 2; //proportional
 double Kic = 0; //integral
 double Kdc = 0; //derivative
 
@@ -70,7 +70,7 @@ enum Action {
 };
 
 //initial state
-Action volatile currentState = FORWARD;
+Action currentState = FORWARD;
 
 void setCarState(Action newState) {
   currentState = newState;
@@ -102,15 +102,15 @@ void setup() {
   delay(10);
   digitalWrite (RST_pin, LOW);
   // Initialize the transceiver
-  if(yourTransceiver.init()){
+  if (yourTransceiver.init()) {
     Serial.println("Initialization succeeds");
-  } else{
+  } else {
     Serial.println("Initialization failed");
   }
   // Set the transceiver's frequency
-  if(yourTransceiver.setFrequency(freqInMHz)){
+  if (yourTransceiver.setFrequency(freqInMHz)) {
     Serial.println("Set frequency successfully");
-  } else{
+  } else {
     Serial.println("Failed in setting frequency");
   }
   // Set the transceiver's power level
@@ -123,41 +123,46 @@ void loop() {
     uint8_t buf[RH_RF69_MAX_MESSAGE_LEN] = {0};
     uint8_t len = sizeof(buf) - 1; // Reserve space for null terminator
     if (yourTransceiver.recv(buf, &len)) {
-        // Null-terminate the received message to safely use C string functions
-        buf[len] = '\0';
-        // Serial.print("Received message: ");
-        // Serial.println((char*)buf); // Assumes message is ASCII text
-        // Variables to hold the extracted values
-        int p, i, d;
-        // sscanf to extract the values from the received message
-        if (sscanf((char*)buf, "%d %d %d", &p, &i, &d) == 3) {
-            Kpc = p/10.0;
-            Kic = i/10.0;
-            Kdc = d/10.0;
-            // Serial.print("Extracted values: P=");
-            // Serial.print(p);
-            // Serial.print(", I=");
-            // Serial.print(i);
-            // Serial.print(", D=");
-            // Serial.println(d);
-        } else {
-            Serial.println("Error parsing message");
-        }
+      // Null-terminate the received message to safely use C string functions
+      buf[len] = '\0';
+      // Serial.print("Received message: ");
+      // Serial.println((char*)buf); // Assumes message is ASCII text
+      // Variables to hold the extracted values
+      int p, i, d;
+      // sscanf to extract the values from the received message
+      if (sscanf((char*)buf, "%d %d %d", &p, &i, &d) == 3) {
+        Kpc = p / 10.0;
+        Kic = i / 10.0;
+        Kdc = d / 10.0;
+        Serial.print("Extracted values: P=");
+        Serial.print(p);
+        Serial.print(", I=");
+        Serial.print(i);
+        Serial.print(", D=");
+        Serial.println(d);
+      } else {
+        Serial.println("Error parsing message");
+      }
     } else {
-        Serial.println("Receive failed");
+      Serial.println("Receive failed");
     }
   }
+  Serial.print("currentState: ");
+  Serial.println(currentState);
+  Serial.print("distance: ");
+  Serial.println(distance);
+
   double setpoint;
   // put your main code here, to run repeatedly:
 
-  measureDistance();
+  distance = getAverageDistance(5);
   //find gyro angle
 
-  if (distance > 10) { //if high distance, move forward
-    setCarState(FORWARD);
-  }
-  else if (distance <= 10 and distance > 5) { //if correct distance range, pixy read
+  if (distance > 8) { //if high distance, move forward
     setCarState(PIXY_READ);
+  }
+  else if ((distance <= 8) and (distance > 2)) { //if correct distance range, pixy read
+    setCarState(FORWARD);
   }
   else { //otherwise, too close, back up
     setCarState(BACKWARD);
@@ -210,6 +215,7 @@ void loop() {
       break;
 
     case PIXY_READ:
+      Serial.println("Pixy Read");
       //read color and set the state based on what is read
       pixy.ccc.getBlocks();
       if (pixy.ccc.numBlocks) {
@@ -289,7 +295,9 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
   double speed; //speed output of the motors
   double input;
   while (1) {
-    measureDistance();
+    distance = getAverageDistance(5);
+    Serial.print("distance: ");
+    Serial.println(distance);
     if (distance < 8) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
       motors.setM1Speed(0);
       motors.setM2Speed(0);
@@ -301,17 +309,17 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
       input = euler.x();
       oldTime = now; //update oldTime
       double error = setpoint - input; //find error
-      if(error < 0){
-        if(error > -180){
+      if (error < 0) {
+        if (error > -180) {
           error = error;
-        } else{
+        } else {
           error = error + 360;
         }
       }
-      else{
-        if(error < 180){
+      else {
+        if (error < 180) {
           error = error;
-        } else{
+        } else {
           error = 360 - error;
         }
       }
@@ -319,7 +327,7 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
       derivative = (error - old_err) / (rr / 1000.0); //calc deriv
       output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
       old_err = error; //updates old error to current error
-      speedAdjust = constrain(output, -50, 50);
+      speedAdjust = constrain(output, -100, 100);
       // TODO: NEED TO CALIBRATE
       // HERE, WANT currSpeed to be positve
       Serial.print(setpoint);
@@ -358,4 +366,15 @@ void measureDistance() {
   //finally, measure the length of the incoming pulse
   pulseDuration = pulseIn(signal, HIGH);
   distance = (pulseDuration * 0.0001 * 343) / 2; //conversion for the distance
+
+}
+
+float getAverageDistance(int numReadings) {
+  float sumDistance = 0;
+  for (int i = 0; i < numReadings; ++i) {
+    measureDistance();  // Assuming this function updates 'distance'
+    sumDistance += distance;
+    delay(10);  // Add a small delay between readings
+  }
+  return sumDistance / numReadings;
 }
