@@ -58,7 +58,7 @@ const int SIGNATURE_TURN_AROUND = 3;
 const int SIGNATURE_RIGHT_Light = 4;
 const int SIGNATURE_RIGHT_Light2 = 5;
 
-double usualSpeed = -200;
+double usualSpeed = -150;
 //states
 enum Action {
   FORWARD,
@@ -125,21 +125,21 @@ void loop() {
     if (yourTransceiver.recv(buf, &len)) {
         // Null-terminate the received message to safely use C string functions
         buf[len] = '\0';
-        Serial.print("Received message: ");
-        Serial.println((char*)buf); // Assumes message is ASCII text
+        // Serial.print("Received message: ");
+        // Serial.println((char*)buf); // Assumes message is ASCII text
         // Variables to hold the extracted values
         int p, i, d;
         // sscanf to extract the values from the received message
         if (sscanf((char*)buf, "%d %d %d", &p, &i, &d) == 3) {
-            Kpc = p;
-            Kic = i;
-            Kdc = d;
-            Serial.print("Extracted values: P=");
-            Serial.print(p);
-            Serial.print(", I=");
-            Serial.print(i);
-            Serial.print(", D=");
-            Serial.println(d);
+            Kpc = p/10.0;
+            Kic = i/10.0;
+            Kdc = d/10.0;
+            // Serial.print("Extracted values: P=");
+            // Serial.print(p);
+            // Serial.print(", I=");
+            // Serial.print(i);
+            // Serial.print(", D=");
+            // Serial.println(d);
         } else {
             Serial.println("Error parsing message");
         }
@@ -301,15 +301,36 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
       input = euler.x();
       oldTime = now; //update oldTime
       double error = setpoint - input; //find error
+      if(error < 0){
+        if(error > -180){
+          error = error;
+        } else{
+          error = error + 360;
+        }
+      }
+      else{
+        if(error < 180){
+          error = error;
+        } else{
+          error = 360 - error;
+        }
+      }
       integral = integral + (error * (rr / 1000.0)); //calculate integral
       derivative = (error - old_err) / (rr / 1000.0); //calc deriv
       output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
       old_err = error; //updates old error to current error
-      speedAdjust = constrain(output, -100, 100);
+      speedAdjust = constrain(output, -50, 50);
       // TODO: NEED TO CALIBRATE
       // HERE, WANT currSpeed to be positve
-      motors.setM1Speed(abs(currSpeed + speedAdjust)); //set motor speed to the normal speed plus some PID adjustment
-      motors.setM2Speed(-1 * abs(currSpeed - speedAdjust)); //set the other motor to have the opposite change of the first one, magnifying the effect
+      Serial.print(setpoint);
+      Serial.print(" ");
+      Serial.print(input);
+      Serial.print(" ");
+      Serial.print(error);
+      Serial.print(" ");
+      Serial.println(speedAdjust);
+      motors.setM1Speed(currSpeed - speedAdjust); //set motor speed to the normal speed plus some PID adjustment
+      motors.setM2Speed(- 1 * currSpeed - speedAdjust); //set the other motor to have the opposite change of the first one, magnifying the effect
     }
   }
 }
