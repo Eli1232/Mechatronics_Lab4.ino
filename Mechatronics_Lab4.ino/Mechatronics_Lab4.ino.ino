@@ -29,9 +29,9 @@ double threshold_stra = 0.05; //degree threshold for straight PID
 double threshold_turn = 0.05; //degree threshold for turning PID
 
 //PID constants for centering
-double Kpc = 2; //proportional
-double Kic = 0; //integral
-double Kdc = 0; //derivative
+double Kpc = 14; //proportional
+double Kic = 8; //integral
+double Kdc = 2.1; //derivative
 
 //PID constants for distance
 double Kpd = 1; //proportional
@@ -39,10 +39,11 @@ double Kid = 0; //integral
 double Kdd = 0; //derivative
 
 //PID constants for turning
-double Kpt = 1; //proportional
+double Kpt = 5; //proportional
 double Kit = 0; //integral
 double Kdt = 0; //derivative
 
+int state;
 
 
 //ping sensor initialization
@@ -59,22 +60,6 @@ const int SIGNATURE_RIGHT_Light = 4;
 const int SIGNATURE_RIGHT_Light2 = 5;
 
 double usualSpeed = -150;
-//states
-enum Action {
-  FORWARD,
-  BACKWARD,
-  TURN_LEFT,
-  TURN_RIGHT,
-  TURN_AROUND,
-  PIXY_READ
-};
-
-//initial state
-Action currentState = FORWARD;
-
-void setCarState(Action newState) {
-  currentState = newState;
-}
 
 void setup() {
   Serial.begin(115200); //for the pixy
@@ -87,7 +72,7 @@ void setup() {
     Serial.print("Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
     while (1);
   }
-  imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+  euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
   firstAngle = euler.x(); //x angle of the robot in setup
   lastAngle = euler.x(); //x angle of the robot in setup
 
@@ -115,6 +100,7 @@ void setup() {
   }
   // Set the transceiver's power level
   yourTransceiver.setTxPower(16, true);
+  state = 1;
 }
 
 void loop() {
@@ -131,15 +117,15 @@ void loop() {
       int p, i, d;
       // sscanf to extract the values from the received message
       if (sscanf((char*)buf, "%d %d %d", &p, &i, &d) == 3) {
-        Kpc = p / 10.0;
-        Kic = i / 10.0;
-        Kdc = d / 10.0;
-        Serial.print("Extracted values: P=");
-        Serial.print(p);
-        Serial.print(", I=");
-        Serial.print(i);
-        Serial.print(", D=");
-        Serial.println(d);
+        Kpt = p / 10.0;
+        Kit = i / 10.0;
+        Kdt = d / 10.0;
+        // Serial.print("Extracted values: P=");
+        // Serial.print(p);
+        // Serial.print(", I=");
+        // Serial.print(i);
+        // Serial.print(", D=");
+        // Serial.println(d);
       } else {
         Serial.println("Error parsing message");
       }
@@ -147,84 +133,88 @@ void loop() {
       Serial.println("Receive failed");
     }
   }
-  Serial.print("currentState: ");
-  Serial.println(currentState);
-  Serial.print("distance: ");
-  Serial.println(distance);
-
+  Serial.println(state);
   double setpoint;
   // put your main code here, to run repeatedly:
 
-  distance = getAverageDistance(5);
+  // distance = getAverageDistance(5);
   //find gyro angle
 
-  if (distance > 8) { //if high distance, move forward
-    setCarState(PIXY_READ);
-  }
-  else if ((distance <= 8) and (distance > 2)) { //if correct distance range, pixy read
-    setCarState(FORWARD);
-  }
-  else { //otherwise, too close, back up
-    setCarState(BACKWARD);
-  }
-
-  switch (currentState) {
-    case FORWARD:
+  switch (state) {
+    case 1:
+      Serial.println("Forward");
       //move motors forward, IMU centering
       motors.setM1Speed(usualSpeed); //set M1 to the usual speed
       motors.setM2Speed(-1 * usualSpeed); //make M2 the opposite of M1
-      imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER); //get the x angle
+      euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER); //get the x angle
       if (abs(euler.x() - lastAngle) > threshold_stra) { //if the current x angle is more than the threshold away from the startup angle, enter straightening PID
         aPID_STRAIGHT(Kpc, Kic, Kdc, lastAngle, usualSpeed); //run straightening PID
+        Serial.println("Freedom!!!!!!!!!!!!!!!!!!!!");
+        state = 6;
+        motors.setM1Speed(0); //set M1 to the usual speed
+        motors.setM2Speed(0); //make M2 the opposite of M1
+        break;
       }
       break;
 
-    case  BACKWARD: //Move backwards slowly, no PID, until distance is high enough, then it goes to PIXY_READ
+    case 2: //Move backwards slowly, no PID, until distance is high enough, then it goes to PIXY_READ
+      Serial.println("Backward");
       motors.setM1Speed(- 1 * (usualSpeed / 2));
       motors.setM2Speed(usualSpeed / 2);
+      state = 1;
       break;
 
-    case TURN_LEFT:
+    case 3:
       //move motors until turned 90 degrees left
+      Serial.println("Left");
       setpoint = lastAngle - 90; //setpoint is 90 degrees left of the previous angle (based on the first global angle)
       if (setpoint < 0) { //if the setpoint is negative, rollover by 360
         setpoint = 360 + setpoint;
       }
       lastAngle = setpoint; //set lastangle to the one set in setpoint
       aPID_TURNING(Kpt, Kit, Kdt, setpoint); //run turning PID
+      state = 1;
       break;
 
-    case TURN_RIGHT:
+    case 4:
       //move motors until turned 90 degrees right
+      Serial.println("Right");
       setpoint = lastAngle + 90;
       if (setpoint > 360) {
         setpoint = setpoint - 360;
       }
       lastAngle = setpoint;
       aPID_TURNING(Kpt, Kit, Kdt, setpoint);
+      state = 1;
       break;
 
-    case TURN_AROUND:
+    case 5:
       //move motors until turned 180 degrees
+      Serial.println("Around");
       setpoint = lastAngle + 180;
       if (setpoint > 360) {
         setpoint = setpoint - 360;
       }
       lastAngle = setpoint;
       aPID_TURNING(Kpt, Kit, Kdt, setpoint);
+      state = 1;
       break;
 
-    case PIXY_READ:
+    case 6:
       Serial.println("Pixy Read");
+      delay(4000);
       //read color and set the state based on what is read
       pixy.ccc.getBlocks();
       if (pixy.ccc.numBlocks) {
         if (pixy.ccc.blocks[0].m_signature == 1) {
-          setCarState(TURN_LEFT);
+          state = 3;
+          Serial.println("Turn left");
         } else if (pixy.ccc.blocks[0].m_signature == 2 || pixy.ccc.blocks[0].m_signature == 4) {
-          setCarState(TURN_RIGHT);
+          state = 4;
+          Serial.println("Turn right");
         } else if (pixy.ccc.blocks[0].m_signature == 3) {
-          setCarState(TURN_AROUND);
+          state = 5;
+          Serial.println("Turn around");
         }
       }
       break;
@@ -259,12 +249,32 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
       input = euler.x();
       oldTime = now; //update oldTime
       double error = setpoint - input; //find error
+      if (error < 0) {
+        if (error > -180) {
+          error = error;
+        } else {
+          error = error + 360;
+        }
+      }
+      else {
+        if (error < 180) {
+          error = error;
+        } else {
+          error = 360 - error;
+        }
+      }
+      Serial.print(setpoint);
+      Serial.print(" ");
+      Serial.print(input);
+      Serial.print(" ");
+      Serial.print(error);
+      Serial.print(" ");
       if (abs(error) < threshold_turn) { // if euler.x() is pretty close to the setpoint, and it is within the threshold for the settling time
         settleCount = millis(); //update the current settle time counter
         if (settleCount - oldSettleCount >= settleTime) { //if the error has been within the settle threshold for enough time, exit the turning PID
           // stop and exit the function
-          motors.setM1Speed(speed);
-          motors.setM2Speed(speed);
+          motors.setM1Speed(0);
+          motors.setM2Speed(0);
           return;
         }
       }
@@ -276,8 +286,9 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
       output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
       old_err = error; //updates old error to current error
       speed = constrain(output, -400, 400);
-      motors.setM1Speed(speed); //wheels fed same speed, turn in opposite directions
-      motors.setM2Speed(speed);
+      Serial.println(speed);
+      motors.setM1Speed(-1 * speed); //wheels fed same speed, turn in opposite directions
+      motors.setM2Speed(-1 * speed);
     }
   }
 }
@@ -301,6 +312,7 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
     if (distance < 8) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
       motors.setM1Speed(0);
       motors.setM2Speed(0);
+      Serial.println("Exit");
       return;
     }
     now = millis();
@@ -330,13 +342,13 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
       speedAdjust = constrain(output, -100, 100);
       // TODO: NEED TO CALIBRATE
       // HERE, WANT currSpeed to be positve
-      Serial.print(setpoint);
-      Serial.print(" ");
-      Serial.print(input);
-      Serial.print(" ");
-      Serial.print(error);
-      Serial.print(" ");
-      Serial.println(speedAdjust);
+      // Serial.print(setpoint);
+      // Serial.print(" ");
+      // Serial.print(input);
+      // Serial.print(" ");
+      // Serial.print(error);
+      // Serial.print(" ");
+      // Serial.println(speedAdjust);
       motors.setM1Speed(currSpeed - speedAdjust); //set motor speed to the normal speed plus some PID adjustment
       motors.setM2Speed(- 1 * currSpeed - speedAdjust); //set the other motor to have the opposite change of the first one, magnifying the effect
     }
