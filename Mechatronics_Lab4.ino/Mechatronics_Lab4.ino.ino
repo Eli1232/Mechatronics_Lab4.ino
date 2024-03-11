@@ -26,7 +26,7 @@ double firstAngle = 0;
 double lastAngle = 0; //previous angle (updated in setup and after turns
 imu::Vector<3> euler;
 double threshold_stra = 0.05; //degree threshold for straight PID
-double threshold_turn = 3; //degree threshold for turning PID
+double threshold_turn = 2; //degree threshold for turning PID
 
 //PID constants for centering
 double Kpc = 6; //proportional
@@ -39,9 +39,15 @@ double Kid = 0; //integral
 double Kdd = 0; //derivative
 
 //PID constants for turning
-double Kpt = 3.5; //proportional
-double Kit = 1; //integral
-double Kdt = .4; //derivative
+double Kpt = 5; //proportional
+double Kit = 6; //integral
+double Kdt = .5; //derivative - set above 0 so that we can increase Kp to improve performance near the setpoint
+
+//double Kpt = 3.8; //proportional
+//double Kit = 6; //integral
+//double Kdt = .4; //derivative - set above 0 so that we can increase Kp to improve performance near the setpoint
+
+
 
 int state;
 
@@ -137,8 +143,7 @@ void loop() {
   double setpoint;
   // put your main code here, to run repeatedly:
 
-  // distance = getAverageDistance(5);
-  //find gyro angle
+  //  distance = getAverageDistance(5);
 
   switch (state) {
     case 1:
@@ -146,6 +151,12 @@ void loop() {
       //move motors forward, IMU centering
       motors.setM1Speed(usualSpeed); //set M1 to the usual speed
       motors.setM2Speed(-1 * usualSpeed); //make M2 the opposite of M1
+
+      distance = getAverageDistance(5);
+      if (distance < 5) { //if too close, break from forwards and go to backwards
+        state = 2;
+        break;
+      }
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER); //get the x angle
       if (abs(euler.x() - lastAngle) > threshold_stra) { //if the current x angle is more than the threshold away from the startup angle, enter straightening PID
         aPID_STRAIGHT(Kpc, Kic, Kdc, lastAngle, usualSpeed); //run straightening PID
@@ -161,7 +172,10 @@ void loop() {
       Serial.println("Backward");
       motors.setM1Speed(- 1 * (usualSpeed / 2));
       motors.setM2Speed(usualSpeed / 2);
-      state = 1;
+      distance = getAverageDistance(5);
+      if (distance > 5) { //if far enough away, switch to forwards
+        state = 1;
+      }
       break;
 
     case 3:
@@ -230,6 +244,7 @@ void loop() {
 //Distance- Process variable: distance (ultrasonic). Control variable: motor speed. Purpose: prevents robot from drifting when moving forward
 //Turning- Process variable: angle (IMU). Control variable: motor speed. Purpose: Get the robot to turn 90 or 180 degrees
 void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
+  double kiInput = Ki;
   double integral = 0; //cumulative der
   double derivative; //change in error over change in time
   double old_err = 0; //error from previous time step
@@ -247,7 +262,7 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER); //get the new angle
       input = euler.x();
-      if (input > 180) {
+      if (input > 190) {
         input = input - 360;
       }
       if (setpoint > 180) {
@@ -255,6 +270,7 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
       }
       oldTime = now; //update oldTime
       double error = setpoint - input; //find error
+
       //      if (error < 0) {
       //        if (error > -180) {
       //          error = error;
@@ -287,14 +303,25 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
       else { //if we ever fall outside the threshold
         oldSettleCount = millis(); //resets the starting counter for settleCount
       }
-      integral = integral + (error * (rr / 1000.0)); //calculate integral
+
+
+      if (abs(error) > 30) { //ki term is 0 at the beginning, high at the end (when close to target)
+        Ki = 0;
+      }
+      else if (abs(error) > 10) { //ki term is 0 at the beginning, high at the end (when close to target)
+        Ki = 0.2*kiInput;
+      }
+      else {
+        Ki = kiInput;
+        integral = integral + (error * (rr / 1000.0)); //calculate integral
+      }
       derivative = (error - old_err) / (rr / 1000.0); //calc deriv
       output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
       old_err = error; //updates old error to current error
       speed = constrain(output, -200, 200);
       Serial.println(speed);
-      motors.setM1Speed(-1*speed); //wheels fed same speed, turn in opposite directions
-      motors.setM2Speed(-1*speed);
+      motors.setM1Speed(-1 * speed); //wheels fed same speed, turn in opposite directions
+      motors.setM2Speed(-1 * speed);
     }
   }
 }
@@ -315,7 +342,7 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
     distance = getAverageDistance(5);
     Serial.print("distance: ");
     Serial.println(distance);
-    if (distance < 14) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
+    if (distance < 12) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
       motors.setM1Speed(0);
       motors.setM2Speed(0);
       Serial.println("Exit");
@@ -325,22 +352,28 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
       input = euler.x();
+      if (input > 190) { //190 instead of 180 so it doesn't flip flop between 178 and -178
+        input = input - 360;
+      }
+      if (setpoint > 180) {
+        setpoint = setpoint - 360;
+      }
       oldTime = now; //update oldTime
       double error = setpoint - input; //find error
-      if (error < 0) {
-        if (error > -180) {
-          error = error;
-        } else {
-          error = error + 360;
-        }
-      }
-      else {
-        if (error < 180) {
-          error = error;
-        } else {
-          error = 360 - error;
-        }
-      }
+      //      if (error < 0) {
+      //        if (error > -180) {
+      //          error = error;
+      //        } else {
+      //          error = error + 360;
+      //        }
+      //      }
+      //      else {
+      //        if (error < 180) {
+      //          error = error;
+      //        } else {
+      //          error = 360 - error;
+      //        }
+      //      }
       integral = integral + (error * (rr / 1000.0)); //calculate integral
       derivative = (error - old_err) / (rr / 1000.0); //calc deriv
       output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
