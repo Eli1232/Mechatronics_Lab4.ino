@@ -65,7 +65,7 @@ const int SIGNATURE_TURN_AROUND = 3;
 const int SIGNATURE_RIGHT_Light = 4;
 const int SIGNATURE_RIGHT_Light2 = 5;
 
-double usualSpeed = -125;
+double usualSpeed = -200;
 
 void setup() {
   Serial.begin(115200); //for the pixy
@@ -342,7 +342,7 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
     distance = getAverageDistance(5);
     Serial.print("distance: ");
     Serial.println(distance);
-    if (distance < 10) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
+    if (distance < 15) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
       motors.setM1Speed(0);
       motors.setM2Speed(0);
       Serial.println("Exit");
