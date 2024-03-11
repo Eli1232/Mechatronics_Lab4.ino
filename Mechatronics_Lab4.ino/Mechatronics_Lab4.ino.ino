@@ -26,12 +26,12 @@ double firstAngle = 0;
 double lastAngle = 0; //previous angle (updated in setup and after turns
 imu::Vector<3> euler;
 double threshold_stra = 0.05; //degree threshold for straight PID
-double threshold_turn = 2; //degree threshold for turning PID
+double threshold_turn = 5; //degree threshold for turning PID
 
 //PID constants for centering
 double Kpc = 6; //proportional
 double Kic = 2; //integral
-double Kdc = 0; //derivative
+double Kdc = .1; //derivative
 
 //PID constants for distance
 double Kpd = 1; //proportional
@@ -65,7 +65,7 @@ const int SIGNATURE_TURN_AROUND = 3;
 const int SIGNATURE_RIGHT_Light = 4;
 const int SIGNATURE_RIGHT_Light2 = 5;
 
-double usualSpeed = -150;
+double usualSpeed = -125;
 
 void setup() {
   Serial.begin(115200); //for the pixy
@@ -342,7 +342,7 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
     distance = getAverageDistance(5);
     Serial.print("distance: ");
     Serial.println(distance);
-    if (distance < 12) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
+    if (distance < 10) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
       motors.setM1Speed(0);
       motors.setM2Speed(0);
       Serial.println("Exit");
