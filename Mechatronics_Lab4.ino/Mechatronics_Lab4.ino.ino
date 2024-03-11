@@ -26,7 +26,7 @@ double firstAngle = 0;
 double lastAngle = 0; //previous angle (updated in setup and after turns
 imu::Vector<3> euler;
 double threshold_stra = 0.05; //degree threshold for straight PID
-double threshold_turn = 0.5; //degree threshold for turning PID
+double threshold_turn = 3; //degree threshold for turning PID
 
 //PID constants for centering
 double Kpc = 6; //proportional
@@ -39,9 +39,9 @@ double Kid = 0; //integral
 double Kdd = 0; //derivative
 
 //PID constants for turning
-double Kpt = 3; //proportional
-double Kit = 4; //integral
-double Kdt = 0; //derivative
+double Kpt = 3.5; //proportional
+double Kit = 1; //integral
+double Kdt = .4; //derivative
 
 int state;
 
@@ -247,23 +247,28 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER); //get the new angle
       input = euler.x();
-      
+      if (input > 180) {
+        input = input - 360;
+      }
+      if (setpoint > 180) {
+        setpoint = setpoint - 360;
+      }
       oldTime = now; //update oldTime
       double error = setpoint - input; //find error
-      if (error < 0) {
-        if (error > -180) {
-          error = error;
-        } else {
-          error = error + 360;
-        }
-      }
-      else {
-        if (error < 180) {
-          error = error;
-        } else {
-          error = 360 - error;
-        }
-      }
+      //      if (error < 0) {
+      //        if (error > -180) {
+      //          error = error;
+      //        } else {
+      //          error = error + 360;
+      //        }
+      //      }
+      //      else {
+      //        if (error < 180) {
+      //          error = error;
+      //        } else {
+      //          error = 360 - error;
+      //        }
+      //      }
       Serial.print(setpoint);
       Serial.print(" ");
       Serial.print(input);
@@ -288,8 +293,8 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
       old_err = error; //updates old error to current error
       speed = constrain(output, -200, 200);
       Serial.println(speed);
-      motors.setM1Speed(-1 * speed); //wheels fed same speed, turn in opposite directions
-      motors.setM2Speed(-1 * speed);
+      motors.setM1Speed(-1*speed); //wheels fed same speed, turn in opposite directions
+      motors.setM2Speed(-1*speed);
     }
   }
 }
