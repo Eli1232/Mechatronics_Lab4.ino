@@ -26,12 +26,12 @@ double firstAngle = 0;
 double lastAngle = 0; //previous angle (updated in setup and after turns
 imu::Vector<3> euler;
 double threshold_stra = 0.05; //degree threshold for straight PID
-double threshold_turn = 0.05; //degree threshold for turning PID
+double threshold_turn = 0.5; //degree threshold for turning PID
 
 //PID constants for centering
-double Kpc = 14; //proportional
-double Kic = 8; //integral
-double Kdc = 2.1; //derivative
+double Kpc = 6; //proportional
+double Kic = 2; //integral
+double Kdc = 0; //derivative
 
 //PID constants for distance
 double Kpd = 1; //proportional
@@ -39,8 +39,8 @@ double Kid = 0; //integral
 double Kdd = 0; //derivative
 
 //PID constants for turning
-double Kpt = 5; //proportional
-double Kit = 0; //integral
+double Kpt = 3; //proportional
+double Kit = 4; //integral
 double Kdt = 0; //derivative
 
 int state;
@@ -117,9 +117,9 @@ void loop() {
       int p, i, d;
       // sscanf to extract the values from the received message
       if (sscanf((char*)buf, "%d %d %d", &p, &i, &d) == 3) {
-        Kpt = p / 10.0;
-        Kit = i / 10.0;
-        Kdt = d / 10.0;
+        //        Kpc = p / 10.0;
+        //        Kic = i / 10.0;
+        //        Kdc = d / 10.0;
         // Serial.print("Extracted values: P=");
         // Serial.print(p);
         // Serial.print(", I=");
@@ -202,7 +202,7 @@ void loop() {
 
     case 6:
       Serial.println("Pixy Read");
-      delay(4000);
+      delay(1000);
       //read color and set the state based on what is read
       pixy.ccc.getBlocks();
       if (pixy.ccc.numBlocks) {
@@ -233,7 +233,7 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
   double integral = 0; //cumulative der
   double derivative; //change in error over change in time
   double old_err = 0; //error from previous time step
-  double settleTime = 500;
+  double settleTime = 300;
   unsigned long settleCount = 0; //counter for settling time
   unsigned long oldSettleCount = 0; //counter for settling time
   unsigned long rr = 100; //refresh rate, time it takes between PID running
@@ -247,6 +247,7 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
     if (now - oldTime >= rr) { //if enough time has passed since the last pid call
       euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER); //get the new angle
       input = euler.x();
+      
       oldTime = now; //update oldTime
       double error = setpoint - input; //find error
       if (error < 0) {
@@ -285,7 +286,7 @@ void aPID_TURNING(double Kp, double Ki, double Kd, double setpoint) {
       derivative = (error - old_err) / (rr / 1000.0); //calc deriv
       output = (Kp * error) + (Ki * integral) + (Kd * derivative); //calc output
       old_err = error; //updates old error to current error
-      speed = constrain(output, -400, 400);
+      speed = constrain(output, -200, 200);
       Serial.println(speed);
       motors.setM1Speed(-1 * speed); //wheels fed same speed, turn in opposite directions
       motors.setM2Speed(-1 * speed);
@@ -309,7 +310,7 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
     distance = getAverageDistance(5);
     Serial.print("distance: ");
     Serial.println(distance);
-    if (distance < 8) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
+    if (distance < 14) {//if distance is low enough leave PID, go to the beginning of loop, and case will become PIXY_READ
       motors.setM1Speed(0);
       motors.setM2Speed(0);
       Serial.println("Exit");
@@ -342,13 +343,17 @@ void aPID_STRAIGHT(double Kp, double Ki, double Kd, double setpoint, double curr
       speedAdjust = constrain(output, -100, 100);
       // TODO: NEED TO CALIBRATE
       // HERE, WANT currSpeed to be positve
-      // Serial.print(setpoint);
-      // Serial.print(" ");
-      // Serial.print(input);
-      // Serial.print(" ");
-      // Serial.print(error);
-      // Serial.print(" ");
-      // Serial.println(speedAdjust);
+      Serial.print(setpoint);
+      Serial.print(" ");
+      Serial.print(input);
+      Serial.print(" ");
+      Serial.print(error);
+      Serial.print(" ");
+      Serial.print(Kp * error);
+      Serial.print(" ");
+      Serial.print(Kd * derivative);
+      Serial.print(" ");
+      Serial.println(speedAdjust);
       motors.setM1Speed(currSpeed - speedAdjust); //set motor speed to the normal speed plus some PID adjustment
       motors.setM2Speed(- 1 * currSpeed - speedAdjust); //set the other motor to have the opposite change of the first one, magnifying the effect
     }
